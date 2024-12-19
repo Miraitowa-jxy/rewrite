@@ -191,6 +191,22 @@ std::vector<std::string> DataAnalyzer::suggestVisualization() {
         suggestions.push_back("饼图（适用于展示各分类占比情况）");
     }
 
+    // 新增：若数据有明显的时间序列特征，可考虑时间序列图
+    if (isTimeSeriesData("data") || isTimeSeriesData("metadata")) {
+        suggestions.push_back("时间序列图（适用于展示随时间变化的数据趋势）");
+    }
+
+    // 新增：若有两个数值型字段，可考虑散点图
+    int numNumericFields = 0;
+    for (const auto& record : data_records) {
+        if (StringUtil::isNumeric(record.data) && StringUtil::isNumeric(record.metadata)) {
+            numNumericFields++;
+        }
+    }
+    if (numNumericFields > data_records.size() / 2) {
+        suggestions.push_back("散点图（适用于展示两个变量之间的关系）");
+    }
+
     return suggestions;
 }
 
@@ -385,5 +401,100 @@ void DataAnalyzer::timeSeriesPeriodicityAnalysis(const std::string& time_field) 
         std::cout << "时间序列可能存在周期性特征。" << std::endl;
     } else {
         std::cout << "未发现明显的时间序列周期性特征。" << std::endl;
+    }
+}
+
+// 新增：数据分布分析函数，计算数据的分布情况（简单示例，分为几个区间统计数量）
+std::map<std::string, int> DataAnalyzer::dataDistributionAnalysis(int numBins) {
+    std::map<std::string, int> distribution;
+    std::vector<double> dataValues;
+    for (const auto& record : data_records) {
+        if (StringUtil::isNumeric(record.data)) {
+            dataValues.push_back(std::stod(record.data));
+        }
+    }
+    if (dataValues.empty()) {
+        return distribution;
+    }
+    double minVal = *std::min_element(dataValues.begin(), dataValues.end());
+    double maxVal = *std::max_element(dataValues.begin(), dataValues.end());
+    double binWidth = (maxVal - minVal) / numBins;
+    for (const double& value : dataValues) {
+        int binIndex = static_cast<int>((value - minVal) / binWidth);
+        std::string binKey = "Bin " + std::to_string(binIndex);
+        distribution[binKey]++;
+    }
+    return distribution;
+}
+
+// 新增：数据预测函数，使用简单线性回归进行预测（基于已有数据）
+double DataAnalyzer::linearRegressionPrediction(double x) {
+    std::vector<double> xValues;
+    std::vector<double> yValues;
+    for (const auto& record : data_records) {
+        if (StringUtil::isNumeric(record.data) && StringUtil::isNumeric(record.metadata)) {
+            xValues.push_back(std::stod(record.data));
+            yValues.push_back(std::stod(record.metadata));
+        }
+    }
+    if (xValues.size() < 2 || yValues.size() < 2) {
+        throw std::runtime_error("数据量不足，无法进行线性回归预测。");
+    }
+    double meanX = calculateMean(xValues);
+    double meanY = calculateMean(yValues);
+    double numerator = 0;
+    double denominator = 0;
+    for (size_t i = 0; i < xValues.size(); ++i) {
+        numerator += (xValues[i] - meanX) * (yValues[i] - meanY);
+        denominator += (xValues[i] - meanX) * (xValues[i] - meanX);
+    }
+    double slope = numerator / denominator;
+    double intercept = meanY - slope * meanX;
+    return slope * x + intercept;
+}
+
+// 新增：数据标准化函数，将数据标准化到特定范围（例如 0-1）
+void DataAnalyzer::normalizeData() {
+    std::vector<double> dataValues;
+    for (const auto& record : data_records) {
+        if (StringUtil::isNumeric(record.data)) {
+            dataValues.push_back(std::stod(record.data));
+        }
+    }
+    if (dataValues.empty()) {
+        return;
+    }
+    double minVal = *std::min_element(dataValues.begin(), dataValues.end());
+    double maxVal = *std::max_element(dataValues.begin(), dataValues.end());
+    for (auto& record : data_records) {
+        if (StringUtil::isNumeric(record.data)) {
+            double normalizedValue = (std::stod(record.data) - minVal) / (maxVal - minVal);
+            record.data = std::to_string(normalizedValue);
+        }
+    }
+}
+
+// 新增：数据平滑函数，使用简单移动平均法进行数据平滑（窗口大小为 windowSize）
+void DataAnalyzer::smoothData(int windowSize) {
+    std::vector<double> smoothedData;
+    std::vector<double> dataValues;
+    for (const auto& record : data_records) {
+        if (StringUtil::isNumeric(record.data)) {
+            dataValues.push_back(std::stod(record.data));
+        }
+    }
+    if (dataValues.size() < windowSize) {
+        return;
+    }
+    for (size_t i = 0; i < dataValues.size() - windowSize + 1; ++i) {
+        double sum = 0;
+        for (size_t j = 0; j < windowSize; ++j) {
+            sum += dataValues[i + j];
+        }
+        double smoothedValue = sum / windowSize;
+        smoothedData.push_back(smoothedValue);
+    }
+    for (size_t i = 0; i < smoothedData.size(); ++i) {
+        data_records[i].data = std::to_string(smoothedData[i]);
     }
 }
